@@ -1,25 +1,38 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const savedRole = localStorage.getItem('rxguard_role');
-    return savedRole ? { id: 'demo-user', role: savedRole } : null;
+    const savedToken = localStorage.getItem('rxguard_token');
+    const savedUser = localStorage.getItem('rxguard_user');
+
+    if (savedToken && savedUser) {
+      try {
+        return JSON.parse(savedUser);
+      } catch (e) {
+        return null; // invalid json
+      }
+    }
+    return null;
   });
 
-  const loginAsRole = (role) => {
-    localStorage.setItem('rxguard_role', role);
-    setUser({ id: 'demo-user', role });
+  const loginUserContext = (userData, token) => {
+    localStorage.setItem('rxguard_token', token);
+    localStorage.setItem('rxguard_role', userData.role);
+    localStorage.setItem('rxguard_user', JSON.stringify(userData));
+    setUser(userData);
   };
 
   const logout = () => {
+    localStorage.removeItem('rxguard_token');
     localStorage.removeItem('rxguard_role');
+    localStorage.removeItem('rxguard_user');
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loginAsRole, logout }}>
+    <AuthContext.Provider value={{ user, loginUserContext, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -32,4 +45,3 @@ export function useAuth() {
   }
   return ctx;
 }
-

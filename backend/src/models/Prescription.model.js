@@ -1,54 +1,51 @@
 import mongoose from 'mongoose';
 
-const prescriptionitemSchema = new mongoose.Schema({
-    drugName: { type: String, required: true },
-    dosage: { type: String, required: true },
-    frequency: { type: String, required: true },
-    route: { type: String },
-    duration: { type: String }
-}, { _id: false });
-
 const prescriptionSchema = new mongoose.Schema(
     {
-        patient: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Patient'
+        patientName: {
+            type: String,
+            required: [true, 'Please add a patient name'],
+            trim: true,
         },
-        prescriber: {
+        uploadedBy: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'User'
+            ref: 'User',
+            required: true,
+            index: true,
+        },
+        imagePath: {
+            type: String,
+            required: [true, 'Please provide an image path'],
+        },
+        extractedDrugs: {
+            type: [String],
+            default: [],
+        },
+        interactionWarnings: {
+            type: [String],
+            default: [],
+        },
+        riskScore: {
+            type: Number,
+            default: null,
+        },
+        fhir: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null,
         },
         status: {
             type: String,
-            enum: ['pending_analysis', 'analyzed', 'verified', 'dispensed', 'rejected'],
-            default: 'pending_analysis'
+            enum: ['uploaded', 'processing', 'analyzed', 'failed'],
+            default: 'uploaded',
+            index: true,
         },
-        ocrTextRaw: {
+        errorMessage: {
             type: String,
-            description: 'Raw text extracted from the digitized prescription'
+            default: null,
         },
-        extractedData: [prescriptionitemSchema],
-        safetyAssessment: {
-            riskLevel: {
-                type: String,
-                enum: ['low', 'medium', 'high', 'unknown'],
-                default: 'unknown'
-            },
-            alerts: [
-                {
-                    severity: String,
-                    description: String,
-                    relatedDrugs: [String]
-                }
-            ]
-        },
-        imageFileRef: {
-            type: String,
-            description: 'Reference to the cloud storage bucket location of the original image'
-        }
     },
     {
-        timestamps: true
+        timestamps: true,
     }
 );
 
