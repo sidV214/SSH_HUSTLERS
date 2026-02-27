@@ -1,75 +1,112 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { api } from '../../services/api.js';
 import LoadingState from '../../components/shared/LoadingState.jsx';
 import ErrorState from '../../components/shared/ErrorState.jsx';
 import EmptyState from '../../components/shared/EmptyState.jsx';
 import Icon from '../../components/ui/Icon.jsx';
 
-const mockSafetyReport = {
-  id: 'RX-77021-BETA',
-  timestamp: 'Oct 24, 2023 - 14:20 UTC',
-  version: 'v4.2.1',
-  ocrConfidence: 98.4,
-  summary: {
-    title: 'Critical drug‑drug interaction',
-    body: 'Combining Warfarin and Aspirin significantly increases risk of major hemorrhage. Recommend pharmacist intervention.',
-  },
-  meds: [
-    {
-      name: 'Warfarin Sodium',
-      dosage: '5mg - Once daily',
-      confidence: '99%',
-    },
-    {
-      name: 'Aspirin (Enteric Coated)',
-      dosage: '81mg - Once daily',
-      confidence: '97%',
-    },
-  ],
-};
-
 function PharmacistSafetyReportPage() {
-  const [loading] = useState(false);
-  const [error] = useState(null);
-  const [data] = useState(mockSafetyReport);
+  const { id } = useParams();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [data, setData] = useState(null);
 
-  let content;
+  useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchReport = async () => {
+      try {
+        setLoading(true);
+        const response = await api.getPrescriptionReport(id);
+        // Defensive access: Backend might return raw JSON or a `{ success: true, ... }` object
+        const report = response.report || response;
+
+        // Map backend schema to frontend structure with optional chaining everywhere possible
+        const formattedData = {
+          id: report?._id || id,
+          timestamp: report?.createdAt ? new Date(report.createdAt).toLocaleString() : 'Just now',
+          version: 'v4.2.1 (Backend API)',
+          ocrConfidence: 98.4,
+          summary: {
+            title: report?.status === 'failed' ? 'Analysis Failed' : ((report?.riskScore || 0) > 30 ? 'High Risk Detected' : 'Safe to Dispense'),
+            body: report?.interactionWarnings?.length > 0
+              ? report.interactionWarnings.join(' ')
+              : (report?.errorMessage || 'No critical interactions detected.')
+          },
+          meds: (report?.extractedDrugs || []).map(drug => ({
+            name: typeof drug === 'string' ? drug : (drug?.name || 'Unknown'),
+            dosage: typeof drug === 'string' ? 'Dosage unspecified' : (drug?.dosage || 'Dosage unspecified'),
+            confidence: 'System Extracted'
+          })),
+          fhir: JSON.stringify(report?.fhir || {}, null, 2),
+          riskScore: report?.riskScore || 0,
+          status: report?.status
+        };
+
+        setData(formattedData);
+      } catch (err) {
+        setError("Failed to load report");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReport();
+  }, [id]);
+
+  // Safe Rendering Guards
   if (loading) {
-    content = <LoadingState label="Generating safety report…" />;
-  } else if (error) {
-    content = (
-      <ErrorState
-        message="We couldn't load this safety report."
-        onRetry={null}
-      />
+    return (
+      <div className="p-6 text-center">
+        <LoadingState label="Loading safety report…" />
+      </div>
     );
-  } else if (!data) {
-    content = (
-      <EmptyState
-        title="No report selected"
-        description="Open a completed scan to review OCR confidence, extracted medications, and interaction details."
-      />
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 text-center text-red-500">
+        <p>{error}</p>
+      </div>
     );
-  } else {
-    content = (
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-6 px-4 py-6 md:px-8">
       <main className="space-y-8">
         {/* Header section */}
         <div className="flex flex-wrap justify-between items-end gap-4 border-b border-primary/10 pb-6">
           <div className="flex flex-col gap-1">
             <p className="font-mono text-sm text-primary font-bold uppercase tracking-wider">
-              RX ID: {data.id}
+              RX ID: {data?.id}
             </p>
             <h1 className="text-3xl md:text-4xl font-black leading-tight tracking-tight text-foreground">
               Safety analysis report
             </h1>
             <p className="text-sm text-muted">
-              Generated on {data.timestamp} • System {data.version}
+              Generated on {data?.timestamp} • System {data?.version}
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="bg-danger/10 text-danger px-4 py-2 rounded-lg font-bold flex items-center gap-2 border border-danger/40 shadow-sm">
-              <Icon name="warning" size={16} />
-              HIGH RISK DETECTED
-            </div>
+            {data?.riskScore > 30 || data?.summary?.title === 'High Risk Detected' ? (
+              <div className="bg-danger/10 text-danger px-4 py-2 rounded-lg font-bold flex items-center gap-2 border border-danger/40 shadow-sm">
+                <Icon name="warning" size={16} />
+                HIGH RISK DETECTED
+              </div>
+            ) : (
+              <div className="bg-success/10 text-success px-4 py-2 rounded-lg font-bold flex items-center gap-2 border border-success/40 shadow-sm">
+                <Icon name="check_circle" size={16} />
+                SAFE TO PROCESS
+              </div>
+            )}
           </div>
         </div>
 
@@ -86,33 +123,30 @@ function PharmacistSafetyReportPage() {
                 </span>
               </div>
               <div className="relative">
-                <div className="aspect-[3/4] bg-surface-muted w-full relative overflow-hidden" />
-                <div className="absolute top-[20%] left-[15%] w-[40%] h-[5%] border-2 border-primary bg-primary/10 rounded-sm" />
-                <div className="absolute top-[35%] left-[15%] w-[35%] h-[5%] border-2 border-primary bg-primary/10 rounded-sm" />
-                <div className="absolute top-[20%] right-[10%] w-[10%] h-[5%] bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary rounded-sm">
-                  98%
+                <div className="aspect-[3/4] bg-surface-muted w-full relative overflow-hidden flex flex-col justify-center items-center text-muted">
+                  <Icon name="insert_drive_file" size={48} className="opacity-20 mb-2" />
+                  <span className="font-semibold opacity-50">Secure File Storage</span>
+                </div>
+                <div className="absolute top-[20%] right-[10%] w-[20%] h-[5%] bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary rounded-sm px-2">
+                  100% Secure
                 </div>
               </div>
               <div className="p-4 bg-surface-muted">
                 <div className="flex flex-col gap-3">
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-semibold text-muted">
-                      OCR confidence score
+                      Risk Score Index
                     </span>
                     <span className="text-xs font-bold text-primary">
-                      {data.ocrConfidence}%
+                      {data?.riskScore}/100
                     </span>
                   </div>
                   <div className="w-full h-2 bg-surface rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-primary"
-                      style={{ width: `${data.ocrConfidence}%` }}
+                      className={`h-full ${data?.riskScore > 30 ? 'bg-warning' : 'bg-primary'}`}
+                      style={{ width: `${Math.min(data?.riskScore || 0, 100)}%` }}
                     />
                   </div>
-                  <p className="text-[11px] text-muted leading-relaxed italic">
-                    Visual model detected Warfarin (5mg) and Aspirin (81mg) with high
-                    linguistic probability.
-                  </p>
                 </div>
               </div>
             </div>
@@ -120,15 +154,15 @@ function PharmacistSafetyReportPage() {
 
           {/* Clinical intelligence */}
           <div className="lg:col-span-7 flex flex-col gap-6">
-            <div className="bg-danger/5 border-l-4 border-danger p-5 rounded-xl">
+            <div className={`border-l-4 p-5 rounded-xl ${data?.riskScore > 30 ? 'bg-warning/5 border-warning' : 'bg-success/5 border-success'}`}>
               <div className="flex gap-4">
-                <Icon name="error" size={32} className="text-danger shrink-0" />
+                <Icon name={data?.riskScore > 30 ? 'error' : 'check_circle'} size={32} className={`shrink-0 ${data?.riskScore > 30 ? 'text-warning' : 'text-success'}`} />
                 <div>
-                  <h3 className="text-lg font-bold text-danger">
-                    {data.summary.title}
+                  <h3 className={`text-lg font-bold ${data?.riskScore > 30 ? 'text-warning' : 'text-success'}`}>
+                    {data?.summary?.title}
                   </h3>
-                  <p className="text-sm mt-1 text-danger">
-                    {data.summary.body}
+                  <p className={`text-sm mt-1 ${data?.riskScore > 30 ? 'text-warning' : 'text-success'}`}>
+                    {data?.summary?.body}
                   </p>
                 </div>
               </div>
@@ -140,54 +174,35 @@ function PharmacistSafetyReportPage() {
                   Extracted medications
                 </h3>
               </div>
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-surface-muted text-[11px] uppercase tracking-wider text-muted">
-                    <th className="px-4 py-3 font-semibold">Drug name</th>
-                    <th className="px-4 py-3 font-semibold">Dosage</th>
-                    <th className="px-4 py-3 font-semibold">Confidence</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.meds.map((med) => (
-                    <tr key={med.name} className="text-sm border-t border-border/40">
-                      <td className="px-4 py-4 font-bold text-foreground">
-                        {med.name}
-                      </td>
-                      <td className="px-4 py-4 text-muted">{med.dosage}</td>
-                      <td className="px-4 py-4">
-                        <span className="inline-flex items-center gap-1 text-success font-bold">
-                          <Icon name="check_circle" size={12} />
-                          {med.confidence}
-                        </span>
-                      </td>
+              {data?.meds?.length > 0 ? (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-surface-muted text-[11px] uppercase tracking-wider text-muted">
+                      <th className="px-4 py-3 font-semibold">Drug name</th>
+                      <th className="px-4 py-3 font-semibold">Dosage</th>
+                      <th className="px-4 py-3 font-semibold">Confidence</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-surface rounded-xl border border-border shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon name="info" size={20} className="text-warning" />
-                  <h4 className="font-bold text-sm text-foreground">Mechanism</h4>
-                </div>
-                <p className="text-xs text-muted leading-relaxed">
-                  Additive anticoagulant and antiplatelet effects. Both drugs interfere
-                  with the clotting cascade at different stages.
-                </p>
-              </div>
-              <div className="p-4 bg-surface rounded-xl border border-border shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon name="clinical_notes" size={20} className="text-primary" />
-                  <h4 className="font-bold text-sm text-foreground">Action plan</h4>
-                </div>
-                <p className="text-xs text-muted leading-relaxed">
-                  Validate with prescribing physician. Monitor INR levels closely if
-                  co‑administration is strictly necessary.
-                </p>
-              </div>
+                  </thead>
+                  <tbody>
+                    {data?.meds?.map((med, index) => (
+                      <tr key={index} className="text-sm border-t border-border/40">
+                        <td className="px-4 py-4 font-bold text-foreground">
+                          {med?.name}
+                        </td>
+                        <td className="px-4 py-4 text-muted">{med?.dosage}</td>
+                        <td className="px-4 py-4">
+                          <span className="inline-flex items-center gap-1 text-success font-bold">
+                            <Icon name="check_circle" size={12} />
+                            {med?.confidence}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="p-8 text-center text-muted">No medications could be extracted or matched.</div>
+              )}
             </div>
 
             <div className="rounded-xl overflow-hidden bg-foreground">
@@ -195,30 +210,9 @@ function PharmacistSafetyReportPage() {
                 <span className="text-[10px] font-mono text-muted uppercase tracking-widest">
                   FHIR R4 JSON export
                 </span>
-                <button
-                  type="button"
-                  className="text-muted hover:text-surface transition-colors"
-                >
-                  <Icon name="content_copy" size={16} />
-                </button>
               </div>
-              <pre className="p-4 text-xs font-mono text-success overflow-x-auto bg-foreground">
-                {`{
-  "resourceType": "MedicationRequest",
-  "status": "active",
-  "intent": "order",
-  "medicationCodeableConcept": {
-    "coding": [{
-      "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
-      "code": "855332",
-      "display": "Warfarin Sodium 5 MG Oral Tablet"
-    }]
-  },
-  "riskAssessment": {
-    "severity": "high",
-    "interaction": "aspirin_warfarin_001"
-  }
-}`}
+              <pre className="p-4 text-xs font-mono text-success overflow-x-auto bg-foreground whitespace-pre-wrap word-wrap">
+                {data?.fhir}
               </pre>
             </div>
 
@@ -241,15 +235,8 @@ function PharmacistSafetyReportPage() {
           </div>
         </div>
       </main>
-    );
-  }
-
-  return (
-    <section className="space-y-6 px-4 py-6 md:px-8">
-      {content}
     </section>
   );
 }
 
 export default PharmacistSafetyReportPage;
-

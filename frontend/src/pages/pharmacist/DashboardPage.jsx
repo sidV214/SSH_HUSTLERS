@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '../../constants/routes.js';
 import LoadingState from '../../components/shared/LoadingState.jsx';
 import ErrorState from '../../components/shared/ErrorState.jsx';
 import EmptyState from '../../components/shared/EmptyState.jsx';
@@ -56,6 +58,7 @@ function PharmacistDashboardPage() {
   const [loading] = useState(false);
   const [error] = useState(null);
   const [data] = useState(mockDashboardData);
+  const navigate = useNavigate();
 
   let content;
   if (loading) {
@@ -86,10 +89,10 @@ function PharmacistDashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="secondary" icon="history">
+            <Button variant="secondary" icon="history" onClick={() => navigate(ROUTES.PHARMACIST.AUDIT)}>
               View audit log
             </Button>
-            <Button variant="primary" icon="add_circle">
+            <Button variant="primary" icon="add_circle" onClick={() => navigate(ROUTES.PHARMACIST.SCAN)}>
               Start new scan
             </Button>
           </div>

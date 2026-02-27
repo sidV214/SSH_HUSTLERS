@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '../../constants/routes.js';
 import LoadingState from '../../components/shared/LoadingState.jsx';
 import ErrorState from '../../components/shared/ErrorState.jsx';
 import EmptyState from '../../components/shared/EmptyState.jsx';
@@ -24,6 +26,7 @@ function PatientDashboardPage() {
   const [loading] = useState(false);
   const [error] = useState(null);
   const [data] = useState(mockPatientData);
+  const navigate = useNavigate();
 
   let content;
   if (loading) {
@@ -52,7 +55,7 @@ function PatientDashboardPage() {
               Track your medications, upcoming doses, and safety alerts.
             </p>
           </header>
-          <Button variant="primary" icon="add">
+          <Button variant="primary" icon="add" onClick={() => navigate(ROUTES.PATIENT.PRESCRIPTIONS)}>
             Add Medication
           </Button>
         </div>

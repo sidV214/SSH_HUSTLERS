@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.model.js';
 import { env } from '../config/env.js';
+import { OAuth2Client } from 'google-auth-library';
 
 // Generate JWT
 const generateToken = (id) => {
@@ -79,6 +80,65 @@ export const loginUser = async (req, res, next) => {
             res.status(401);
             throw new Error('Invalid credentials');
         }
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Authenticate with Google
+// @route   POST /api/auth/google
+// @access  Public
+export const googleAuth = async (req, res, next) => {
+    try {
+        const { credential, role } = req.body;
+
+        if (!credential) {
+            res.status(400);
+            throw new Error('Google credential is required');
+        }
+
+        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+        const ticket = await client.verifyIdToken({
+            idToken: credential,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+
+        const payload = ticket.getPayload();
+        if (!payload) {
+            res.status(400);
+            throw new Error('Invalid Google token');
+        }
+
+        const { email, given_name, family_name, sub } = payload;
+
+        let user = await User.findOne({ email });
+
+        if (!user) {
+            if (!role) {
+                res.status(400);
+                throw new Error('Role is required for new Google sign-ups');
+            }
+
+            user = await User.create({
+                firstName: given_name || 'Google',
+                lastName: family_name || 'User',
+                email,
+                role,
+                googleId: sub
+            });
+        } else if (!user.googleId) {
+            user.googleId = sub;
+            await user.save();
+        }
+
+        res.json({
+            _id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            role: user.role,
+            token: generateToken(user._id),
+        });
     } catch (error) {
         next(error);
     }

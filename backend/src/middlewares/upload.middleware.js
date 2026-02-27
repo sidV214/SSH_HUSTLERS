@@ -1,23 +1,41 @@
 import multer from 'multer';
-import { env } from '../config/env.js';
+import path from 'path';
 
-// Use memory storage to process uploads on the fly without writing to disk
-const storage = multer.memoryStorage();
+// Define Storage Strategy
+const storage = multer.diskStorage({
+    destination(req, file, cb) {
+        cb(null, 'uploads/');
+    },
+    filename(req, file, cb) {
+        cb(
+            null,
+            `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`
+        );
+    },
+});
 
-const fileFilter = (req, file, cb) => {
-    const allowedMimeTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+// File validation filter checking extended mimetypes
+const checkFileType = (file, cb) => {
+    const filetypes = /jpg|jpeg|png/;
+    const extname = filetypes.test(
+        path.extname(file.originalname).toLowerCase()
+    );
+    const mimetype = filetypes.test(file.mimetype);
 
-    if (allowedMimeTypes.includes(file.mimetype)) {
-        cb(null, true);
+    if (extname && mimetype) {
+        return cb(null, true);
     } else {
-        cb(new Error('Invalid file type. Only JPEG, PNG and PDF are allowed.'), false);
+        cb(new Error('Images only! (jpg, jpeg, png)'));
     }
 };
 
+// Initiate Middleware
 export const upload = multer({
     storage,
     limits: {
-        fileSize: env.upload.maxFileSize
+        fileSize: process.env.MAX_FILE_SIZE ? parseInt(process.env.MAX_FILE_SIZE) : 5000000 // default 5MB
     },
-    fileFilter
+    fileFilter: function (req, file, cb) {
+        checkFileType(file, cb);
+    },
 });

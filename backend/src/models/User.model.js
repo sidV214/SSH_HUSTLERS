@@ -16,9 +16,17 @@ const userSchema = new mongoose.Schema(
         },
         password: {
             type: String,
-            required: [true, 'Please add a password'],
+            required: [
+                function () { return !this.googleId; },
+                'Please add a password'
+            ],
             minlength: 6,
             select: false
+        },
+        googleId: {
+            type: String,
+            unique: true,
+            sparse: true
         },
         role: {
             type: String,
@@ -43,12 +51,13 @@ const userSchema = new mongoose.Schema(
 
 // Encrypt password using bcrypt
 userSchema.pre('save', async function (next) {
-    if (!this.isModified('password')) {
-        next();
+    if (!this.isModified('password') || !this.password) {
+        return next();
     }
 
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
+    next();
 });
 
 // Match user entered password to hashed password in database
